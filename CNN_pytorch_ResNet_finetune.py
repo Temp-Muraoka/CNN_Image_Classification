@@ -164,7 +164,7 @@ optimizer = optim.Adam(CNN_net.parameters(), lr=0.0001)
 # 学習ループ（Training Loop）の実行
 # ==========================================
 
-EPOCHS = 20
+EPOCHS = 30
 
 # ログ保存用のリスト
 train_loss_list, test_loss_list = [], []
