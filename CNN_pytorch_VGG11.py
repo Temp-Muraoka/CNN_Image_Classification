@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import random
 
 import time
+
+
 # ==========================================
 # デバイス確認 (GPUが使用可能か自動判定)
 # ==========================================
@@ -40,14 +42,10 @@ DATAROOT = 'data/cifar-10' #データ保存先
 train_data = dset.CIFAR10(root=DATAROOT,
                            train=True,
                            download=True)
-                        #    transform=transform)
-
 
 test_data = dset.CIFAR10(root=DATAROOT,
                            train=False,
                            download=True)
-                        #    transform=transform)
-
 
 print("train_data数", len(train_data))
 img, label = train_data[0]
@@ -218,7 +216,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(CNN_net.parameters(), lr=0.001)
 
 # ==========================================
-# 3. 学習ループ（Training Loop）の実行
+# 学習ループ（Training Loop）の実行
 # ==========================================
 
 EPOCHS = 20
@@ -232,75 +230,69 @@ print("--- 学習開始 ---")
 for epoch in range(EPOCHS):
 
     CNN_net.train() # モデルを「学習モード」に設定
-    train_loss = 0.0
 
-     # # 前のステップで理解した DataLoader からミニバッチを高速供給！
-        # for batch_X, batch_y in train_loader:
+    train_loss = 0.0
+    train_correct = 0
 
     # 3. 学習ループ内での「正解ラベル」取り出し
     for images, labels in train_loader:
+
         # データを GPU（または CPU）に送る
         images = images.to(device)
         labels = labels.to(device)
-    
-        # print(images.shape) #torch.Size([256, 3, 32, 32])
 
-        # ① 勾配（計算履歴）の初期化
+        # 勾配（計算履歴）の初期化
         optimizer.zero_grad()
         
-        # ② 予測の計算（順伝播）
+        # 予測の計算（順伝播）
         outputs = CNN_net(images)
         
-        # ③ 誤差の計算
+        # 誤差計算
         # 損失関数は最後、modelの出力(logit)にかける
         loss = criterion(outputs, labels)
         
-        # ④ 逆伝播（自動微分で各パラメーターの勾配を計算）
+        # 逆伝播
         loss.backward()
         
-        # ⑤ パラメーターの更新（一歩賢くなる）
+        # パラメーターの更新
         optimizer.step()
 
-
-    # ================= 評価フェーズ (精度計算) =================
-    CNN_net.eval() #　BatchNorm と Dropout が評価モードになる
+        train_loss += loss.item() * images.size(0) # バッチ内の総Lossを加算
+                    
+        # 精度（Accuracy）の計算と集集
+        predicted = outputs.argmax(dim=1)
+        train_correct += (predicted == labels).sum().item()
         
+    # 平均 Loss と Accuracy(%) 
+    train_loss = train_loss / len(train_loader.dataset)
+    train_acc = train_correct / len(train_loader.dataset)
+
+
+    # ================= 評価フェーズ =================
+    CNN_net.eval() #　評価モード BatchNorm と Dropoutの動作変化
+        
+    test_loss = 0.0
+    test_correct = 0
     
-    # 評価関数を定義しておくと綺麗に書けます
-    # 評価関数（Loss と Accuracy の両方を返す）
-    def evaluate(loader, data_length):
-        running_loss = 0.0
-        correct = 0
-        total = 0
-        
-        with torch.no_grad(): # 勾配計算を無効化（メモリ節約・高速化）
-            for images, labels in loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                
-                # 順伝播
-                outputs = CNN_net(images)
-                
-                # 1. 損失（Loss）の計算と集計
-                loss = criterion(outputs, labels)
-                running_loss += loss.item() * images.size(0) # バッチ内の総Lossを加算
-                
-                # 2. 精度（Accuracy）の計算と集集
-                _, predicted = torch.max(outputs, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+    with torch.no_grad(): # 勾配計算を無効化
 
-        
-                
-        # 全体での平均 Loss と Accuracy(%) を算出
-        avg_loss = running_loss / data_length
-        accuracy = correct / total
-        
-        return avg_loss, accuracy
+        for images, labels in test_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            
+            outputs = CNN_net(images)
+            
+            loss = criterion(outputs, labels)
+            test_loss += loss.item() * images.size(0) # バッチ内の総Lossを加算
+            
+            # 精度（Accuracy）の計算と集集
+            predicted = outputs.argmax(dim=1)
+            test_correct += (predicted == labels).sum().item()
+           
+    # 平均 Loss と Accuracy(%) 
+    test_loss = test_loss / len(test_loader.dataset)
+    test_acc = test_correct / len(test_loader.dataset)
 
-    # 学習データ全体とテストデータ全体の精度を計算
-    train_loss, train_acc = evaluate(train_eval_loader, len(train_data))
-    test_loss, test_acc = evaluate(test_loader, len(test_data))
 
     # ログをリストに保存
     train_loss_list.append(train_loss)
@@ -324,7 +316,7 @@ elapsed_time=end_time-start_time
 print(f"処理時間：{elapsed_time}s")
 
 # ==========================================
-# 4. 学習曲線の描画
+# 学習曲線の描画
 # ==========================================
 # lossとaccuracyをデータフレームにまとめる
 df_log = pd.DataFrame({"train_loss":train_loss_list,
@@ -340,8 +332,53 @@ plt.xlabel("epochs")
 plt.show()
 
 # ==========================================
-# 5. 最終精度の評価
+# 最終精度の評価
 # ==========================================
 # 最終的な正解率
 print(f"final test accuracy: {test_acc_list[-1]}")
 
+
+
+# ==========================================
+# テストデータからランダムに25枚抽出し、予測結果を5x5で表示
+# ==========================================
+CNN_net.eval() # 評価モード
+
+# テストデータからランダムに25個のインデックスを重複なしで選択
+indices = random.sample(range(len(test_data)), 25)
+
+fig, axes = plt.subplots(5, 5, figsize=(12, 12))
+
+# 正規化を元に戻すための逆変換（表示を綺麗にするため: pixel = val * 0.5 + 0.5）
+# ※transformで mean=0.5, std=0.5 を使っているため
+def unnormalize(tensor):
+    tensor = tensor * 0.5 + 0.5
+    return tensor.clamp(0, 1)
+
+with torch.no_grad():
+    for i, ax in enumerate(axes.flat):
+        idx = indices[i]
+        # test_data[idx] は (tensor_img, label) を返す
+        img_tensor, true_label = test_data[idx]
+        
+        # モデルに入力するためにバッチ次元を追加してデバイスへ送る [1, 3, 32, 32]
+        x = img_tensor.unsqueeze(0).to(device)
+        outputs = CNN_net(x)
+        pred_label = outputs.argmax(dim=1).item()
+        
+        # クラス名の取得
+        true_name = test_data.classes[true_label]
+        pred_name = test_data.classes[pred_label]
+        
+        # 表示用に Tensor を NumPy (H, W, C) に変換
+        img_display = unnormalize(img_tensor).permute(1, 2, 0).numpy()
+        
+        ax.imshow(img_display)
+        
+        # 正解なら緑、不正解なら赤でタイトルを表示
+        color = 'green' if true_label == pred_label else 'red'
+        ax.set_title(f"True: {true_name}\nPred: {pred_name}", fontsize=9, color=color)
+        ax.axis('off')
+
+plt.tight_layout()
+plt.show()
