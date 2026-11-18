@@ -14,3 +14,4 @@ sandbox/
 
 # 画像データ
 data/cifar-10
+data/screw
